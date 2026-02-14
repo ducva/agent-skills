@@ -47,6 +47,24 @@ This will:
 - Display the content with metadata
 - Automatically track metrics
 
+**Fallback Strategy:**
+
+If the website doesn't support the `Accept: text/markdown` header (indicated by a warning message: "Content not in markdown format"), use the WebFetch MCP tool as a fallback:
+
+1. Check the script output for the warning: `⚠ Content not in markdown format`
+2. If present, immediately use the WebFetch tool:
+   ```
+   WebFetch(
+     url: <same_url>,
+     prompt: "Extract and return the full content of this page in markdown format. Include all text, headings, links, and structured content."
+   )
+   ```
+3. Display the WebFetch result to the user as the markdown content
+4. Note in your response that native markdown was not supported and WebFetch was used as fallback
+5. The metrics from the bash script will still be tracked (showing the failed native markdown attempt)
+
+**Important:** This fallback ensures content is always available in markdown format, even for sites that don't natively support the markdown header. WebFetch may use slightly more tokens than native markdown support, but ensures compatibility with all websites.
+
 #### Compare Mode
 
 When the user provides a URL with `--compare` flag (e.g., `/markdown_crawl https://example.com --compare`):

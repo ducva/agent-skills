@@ -8,6 +8,8 @@ Fetch web content in markdown format using Cloudflare's "Markdown for Agents" fe
 
 You are a specialized agent for fetching web content in markdown format and tracking usage metrics.
 
+This skill uses a standalone bash script located at `skills/markdown_crawl/markdown_crawl.sh` that handles all functionality.
+
 ### Command Modes
 
 **1. Fetch Markdown (`/markdown_crawl <url>`)**
@@ -28,163 +30,92 @@ You are a specialized agent for fetching web content in markdown format and trac
 - Clear all metrics data
 - Requires user confirmation
 
-### Implementation Steps
+### Implementation
 
-#### For Fetch Mode:
+The skill uses a standalone bash script that handles all operations. Simply call the script with the appropriate command:
 
-1. **Validate the URL**
-   - Ensure it's a valid HTTP/HTTPS URL
-   - Add https:// if protocol is missing
+#### Fetch Mode
 
-2. **Make the HTTP Request**
-   - Use curl with the following command:
-   ```bash
-   curl -L -H "Accept: text/markdown" -H "User-Agent: Claude-Agent/1.0" -i "<url>"
-   ```
-   - `-L` follows redirects
-   - `-H "Accept: text/markdown"` requests markdown format
-   - `-i` includes headers in output
+When the user provides a URL (e.g., `/markdown_crawl https://example.com`):
 
-3. **Parse the Response**
-   - Extract response headers (first section before blank line)
-   - Extract response body (content after headers)
-   - Look for these key headers:
-     - `content-type`: Should contain `text/markdown` if successful
-     - `x-markdown-tokens`: Token count estimate
-     - `content-signal`: AI usage permissions
-
-4. **Display the Content**
-   - Show the markdown content to the user
-   - Display token count if `x-markdown-tokens` header is present
-   - Note the content type received
-
-5. **Track Metrics**
-   - Load existing metrics from `skills/markdown_crawl/metrics.json`
-   - If file doesn't exist, create it with initial structure
-   - Update metrics with this request's data
-   - Save updated metrics back to the file
-
-#### For Compare Mode (--compare flag):
-
-1. **Fetch Markdown Version**
-   - Follow the same steps as fetch mode
-   - Store response and token count
-
-2. **Fetch HTML Version**
-   - Use curl with `Accept: text/html`:
-   ```bash
-   curl -L -H "Accept: text/html" -H "User-Agent: Claude-Agent/1.0" -i "<url>"
-   ```
-   - Store response
-
-3. **Calculate Token Savings**
-   - Get markdown tokens from `x-markdown-tokens` header
-   - Estimate HTML tokens:
-     - If HTML has `x-tokens` or similar header, use it
-     - Otherwise, estimate: `token_count ≈ character_count / 4`
-   - Calculate savings: `saved = html_tokens - markdown_tokens`
-   - Calculate percentage: `percentage = (saved / html_tokens) * 100`
-
-4. **Display Comparison**
-   - Show both content types
-   - Display token counts for each
-   - Highlight the savings
-   - Show percentage reduction
-
-5. **Track Detailed Metrics**
-   - Include both markdown and HTML token counts
-   - Store the savings amount
-
-#### For Stats Mode:
-
-1. **Load Metrics**
-   - Read from `skills/markdown_crawl/metrics.json`
-   - If file doesn't exist, show "No metrics collected yet"
-
-2. **Calculate Statistics**
-   - Success rate: `(successful_requests / total_requests) * 100`
-   - Average markdown tokens: `total_markdown_tokens / successful_requests`
-   - Average savings: `total_tokens_saved / comparison_count`
-   - Top domains: Count domain frequency from request history
-
-3. **Display Formatted Stats**
-   ```
-   📊 Markdown Crawl Statistics
-   ============================
-
-   Total Requests: {total_requests}
-   Successful: {successful_markdown_requests}
-   Failed: {failed_requests}
-   Success Rate: {success_rate}%
-
-   Token Metrics:
-   - Total Markdown Tokens Fetched: {total_markdown_tokens}
-   - Total HTML Tokens (from comparisons): {total_html_tokens}
-   - Total Tokens Saved: {total_tokens_saved}
-   - Average Tokens per Request: {average_tokens_per_request}
-   - Average Savings per Comparison: {average_savings}
-
-   Recent Requests (last 10):
-   {list of recent requests with URL, timestamp, tokens, savings}
-
-   Top Domains:
-   {list of top 5 domains by request count}
-   ```
-
-#### For Reset Mode:
-
-1. **Confirm with User**
-   - Use AskUserQuestion to confirm the reset
-   - Question: "Are you sure you want to reset all markdown_crawl metrics? This cannot be undone."
-   - Options: ["Yes, reset all metrics", "No, keep the metrics"]
-
-2. **Reset Metrics**
-   - If confirmed, create a fresh metrics structure
-   - Save to `skills/markdown_crawl/metrics.json`
-   - Display confirmation message
-
-### Metrics Schema
-
-Store metrics in `skills/markdown_crawl/metrics.json`:
-
-```json
-{
-  "total_requests": 0,
-  "successful_markdown_requests": 0,
-  "failed_requests": 0,
-  "total_markdown_tokens": 0,
-  "total_html_tokens": 0,
-  "total_tokens_saved": 0,
-  "requests_history": [
-    {
-      "url": "https://example.com",
-      "timestamp": "2026-02-14T12:00:00Z",
-      "markdown_tokens": 725,
-      "html_tokens": 1500,
-      "tokens_saved": 775,
-      "success": true,
-      "content_type": "text/markdown",
-      "domain": "example.com"
-    }
-  ]
-}
+```bash
+skills/markdown_crawl/markdown_crawl.sh fetch <url>
 ```
+
+This will:
+- Fetch the URL in markdown format
+- Display the content with metadata
+- Automatically track metrics
+
+#### Compare Mode
+
+When the user provides a URL with `--compare` flag (e.g., `/markdown_crawl https://example.com --compare`):
+
+```bash
+skills/markdown_crawl/markdown_crawl.sh compare <url>
+```
+
+This will:
+- Fetch both markdown and HTML versions
+- Calculate token savings
+- Display a comparison with statistics
+- Track detailed metrics
+
+#### Stats Mode
+
+When the user requests stats (e.g., `/markdown_crawl stats`):
+
+```bash
+skills/markdown_crawl/markdown_crawl.sh stats
+```
+
+This will display comprehensive usage statistics including:
+- Total requests and success rate
+- Token metrics (markdown, HTML, savings)
+- Recent request history
+- Top domains by request count
+
+#### Reset Mode
+
+When the user requests reset (e.g., `/markdown_crawl reset`):
+
+```bash
+skills/markdown_crawl/markdown_crawl.sh reset
+```
+
+This will:
+- Prompt for confirmation (the script handles this interactively)
+- Reset all metrics if confirmed
+- Display confirmation message
+
+### Script Features
+
+The bash script (`markdown_crawl.sh`) automatically handles:
+
+✅ **URL Validation**: Adds https:// if missing, validates format
+✅ **HTTP Requests**: Uses proper headers (`Accept: text/markdown`)
+✅ **Response Parsing**: Extracts headers and body, handles `x-markdown-tokens`
+✅ **Token Calculation**: Uses header values or estimates (char_count / 4)
+✅ **Metrics Tracking**: Maintains persistent JSON metrics file
+✅ **Error Handling**: Clear error messages, graceful failure handling
+✅ **Colored Output**: User-friendly colored terminal output
+✅ **History Management**: Keeps last 50 requests to prevent file bloat
+
+### Dependencies
+
+The script requires:
+- `curl` - For HTTP requests
+- `jq` - For JSON parsing and manipulation
+
+If `jq` is not installed, the script will display an error message.
 
 ### Error Handling
 
-- If URL is invalid, show clear error message
-- If markdown not available (HTML response instead), note it in metrics
-- If curl fails, track as failed request
-- If metrics file is corrupted, create fresh file
-- Always provide helpful error messages to the user
-
-### Notes
-
-- Keep request history limited to last 50 requests to prevent file bloat
-- Extract domain from URL for domain tracking
-- Use ISO 8601 timestamp format
-- Handle both absolute and relative URLs appropriately
-- Respect redirects and follow them
+The script handles errors gracefully:
+- Invalid URLs: Clear error message
+- Network failures: Curl error reporting
+- Missing dependencies: Helpful installation guidance
+- Malformed metrics: Auto-recreates metrics file
 
 ## Inputs
 

@@ -24,6 +24,15 @@ Learn more: [Cloudflare - Markdown for Agents](https://blog.cloudflare.com/markd
 - ✅ Success rate monitoring
 - ✅ Request history
 - ✅ Domain statistics
+- ✅ Standalone bash script (can be used independently)
+- ✅ Claude Code skill integration
+
+### Implementation
+
+This skill includes a standalone bash script (`markdown_crawl.sh`) that can be used in two ways:
+
+1. **As a Claude Code skill**: `/markdown_crawl <url>`
+2. **As a standalone CLI tool**: `./skills/markdown_crawl/markdown_crawl.sh fetch <url>`
 
 ### Commands
 
@@ -218,15 +227,16 @@ Monitor how much token savings you achieve over time.
 ### File Structure
 ```
 skills/markdown_crawl/
-├── skill.json       # Skill metadata
-├── prompt.md        # Agent instructions
-├── README.md        # This file
-└── metrics.json     # Metrics storage (auto-created)
+├── skill.json          # Skill metadata
+├── prompt.md           # Agent instructions
+├── markdown_crawl.sh   # Standalone bash script (executable)
+├── README.md           # This file
+└── metrics.json        # Metrics storage (auto-created)
 ```
 
 ### Dependencies
 - `curl` - For HTTP requests
-- `jq` - For JSON parsing (optional, uses bash if not available)
+- `jq` - For JSON parsing (required)
 
 ### Metrics File Location
 `skills/markdown_crawl/metrics.json`
@@ -236,23 +246,47 @@ The file is automatically created on first use and persists across sessions.
 ## Examples
 
 ### Example 1: Quick Fetch
+**As a skill:**
 ```bash
 /markdown_crawl https://blog.example.com/article
 ```
 
+**Standalone:**
+```bash
+./skills/markdown_crawl/markdown_crawl.sh fetch https://blog.example.com/article
+```
+
 ### Example 2: Measure Savings
+**As a skill:**
 ```bash
 /markdown_crawl https://docs.example.com/guide --compare
 ```
 
+**Standalone:**
+```bash
+./skills/markdown_crawl/markdown_crawl.sh compare https://docs.example.com/guide
+```
+
 ### Example 3: Check Your Stats
+**As a skill:**
 ```bash
 /markdown_crawl stats
 ```
 
+**Standalone:**
+```bash
+./skills/markdown_crawl/markdown_crawl.sh stats
+```
+
 ### Example 4: Reset Everything
+**As a skill:**
 ```bash
 /markdown_crawl reset
+```
+
+**Standalone:**
+```bash
+./skills/markdown_crawl/markdown_crawl.sh reset
 ```
 
 ## Troubleshooting

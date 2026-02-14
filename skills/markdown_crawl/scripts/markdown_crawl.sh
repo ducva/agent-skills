@@ -47,6 +47,8 @@ init_metrics() {
   "total_markdown_tokens": 0,
   "total_html_tokens": 0,
   "total_tokens_saved": 0,
+  "html_conversions": 0,
+  "converted_markdown_tokens": 0,
   "requests_history": []
 }
 EOF
@@ -160,6 +162,37 @@ parse_response() {
     tail -n +$((blank_line + 1)) "$file" > "${output_prefix}_body.txt" 2>/dev/null
 }
 
+# Convert HTML to Markdown using Go binary
+convert_html_to_markdown() {
+    local html_file="$1"
+    local converter="${SCRIPT_DIR}/html_to_markdown"
+
+    # Check if converter exists
+    if [[ ! -x "$converter" ]]; then
+        warning "html_to_markdown binary not found or not executable"
+        info "Building converter..."
+        if [[ -f "${SCRIPT_DIR}/build.sh" ]]; then
+            cd "$SCRIPT_DIR" && bash build.sh
+        else
+            error "Build script not found. Please install html-to-markdown converter manually."
+        fi
+    fi
+
+    # Check again after build attempt
+    if [[ ! -x "$converter" ]]; then
+        error "Failed to build or find html_to_markdown binary"
+    fi
+
+    # Convert HTML to Markdown
+    local md_file=$(mktemp)
+    if cat "$html_file" | "$converter" > "$md_file" 2>/dev/null; then
+        echo "$md_file"
+    else
+        rm -f "$md_file"
+        error "Failed to convert HTML to Markdown"
+    fi
+}
+
 # Update metrics with new request
 update_metrics() {
     local url="$1"
@@ -167,6 +200,8 @@ update_metrics() {
     local html_tokens="$3"
     local success="$4"
     local content_type="$5"
+    local was_converted="${6:-false}"
+    local converted_tokens="${7:-0}"
 
     local metrics=$(load_metrics)
     local domain=$(extract_domain "$url")
@@ -184,6 +219,8 @@ update_metrics() {
     local total_md_tokens=$(echo "$metrics" | jq '.total_markdown_tokens')
     local total_html=$(echo "$metrics" | jq '.total_html_tokens')
     local total_saved=$(echo "$metrics" | jq '.total_tokens_saved')
+    local html_conversions=$(echo "$metrics" | jq '.html_conversions')
+    local converted_md_tokens=$(echo "$metrics" | jq '.converted_markdown_tokens')
 
     if [[ "$success" == "true" ]]; then
         successful_requests=$((successful_requests + 1))
@@ -197,6 +234,12 @@ update_metrics() {
         total_saved=$((total_saved + tokens_saved))
     fi
 
+    # Track HTML conversions
+    if [[ "$was_converted" == "true" ]]; then
+        html_conversions=$((html_conversions + 1))
+        converted_md_tokens=$((converted_md_tokens + converted_tokens))
+    fi
+
     # Create new request entry
     local new_entry=$(cat <<EOF
 {
@@ -207,7 +250,9 @@ update_metrics() {
   "tokens_saved": $tokens_saved,
   "success": $success,
   "content_type": "$content_type",
-  "domain": "$domain"
+  "domain": "$domain",
+  "was_converted": $was_converted,
+  "converted_tokens": $converted_tokens
 }
 EOF
 )
@@ -220,12 +265,16 @@ EOF
         --arg md_tokens "$total_md_tokens" \
         --arg html "$total_html" \
         --arg saved "$total_saved" \
+        --arg conversions "$html_conversions" \
+        --arg converted "$converted_md_tokens" \
         '.total_requests = ($total | tonumber) |
          .successful_markdown_requests = ($success_count | tonumber) |
          .failed_requests = ($failed | tonumber) |
          .total_markdown_tokens = ($md_tokens | tonumber) |
          .total_html_tokens = ($html | tonumber) |
          .total_tokens_saved = ($saved | tonumber) |
+         .html_conversions = ($conversions | tonumber) |
+         .converted_markdown_tokens = ($converted | tonumber) |
          .requests_history = ([$entry] + .requests_history)[0:50]')
 
     save_metrics "$metrics"
@@ -245,41 +294,70 @@ cmd_fetch() {
     local content_type=$(extract_header "$headers" "content-type")
     local md_tokens=$(extract_header "$headers" "x-markdown-tokens")
 
+    local was_converted="false"
+    local converted_tokens=0
+    local final_body="$body"
+    local final_tokens=0
+
     # Display content
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}Content from: ${NC}$url"
     echo -e "${CYAN}Content-Type: ${NC}$content_type"
-    if [[ -n "$md_tokens" ]]; then
-        echo -e "${CYAN}Tokens: ${NC}$md_tokens"
-    fi
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    cat /tmp/md_body.txt
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-    # Determine success and token count
-    local success="false"
-    local token_count=0
-
+    # Check if we got markdown or need to convert
     if [[ "$content_type" == *"markdown"* ]]; then
-        success="true"
-        success "Content received in markdown format"
+        # Native markdown support
+        echo -e "${GREEN}✓ Native Markdown support detected${NC}"
+        if [[ -n "$md_tokens" ]]; then
+            echo -e "${CYAN}Tokens: ${NC}$md_tokens (from header)"
+        fi
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        cat /tmp/md_body.txt
+        echo ""
+
+        final_tokens=${md_tokens:-$(estimate_tokens "$body")}
+        if [[ -z "$md_tokens" ]]; then
+            info "Estimated token count: $final_tokens"
+        fi
     else
+        # Need to convert HTML to Markdown
         warning "Content not in markdown format (got: $content_type)"
-        info "Tip: When called from Claude, use WebFetch as fallback for better markdown conversion"
+        info "Attempting auto-conversion to markdown..."
+
+        # Fetch HTML and convert
+        local html_file=$(fetch_html "$url")
+        local md_converted_file=$(convert_html_to_markdown "$html_file")
+
+        if [[ -f "$md_converted_file" ]]; then
+            final_body=$(cat "$md_converted_file")
+            converted_tokens=$(estimate_tokens "$final_body")
+
+            echo -e "${GREEN}✓ Auto-converted HTML to Markdown${NC}"
+            echo -e "${CYAN}Tokens (estimated): ${NC}$converted_tokens"
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            echo "$final_body"
+            echo ""
+
+            was_converted="true"
+            final_tokens=$converted_tokens
+
+            rm -f "$html_file" "$md_converted_file"
+        else
+            error "Failed to convert HTML to Markdown"
+        fi
     fi
 
-    if [[ -n "$md_tokens" ]]; then
-        token_count=$md_tokens
-    else
-        token_count=$(estimate_tokens "$body")
-        info "Estimated token count: $token_count"
-    fi
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-    # Update metrics
-    update_metrics "$url" "$token_count" 0 "$success" "$content_type"
+    # Update metrics (pass conversion info)
+    local success="true"
+    if [[ "$content_type" != *"markdown"* ]]; then
+        success="false"
+    fi
+    update_metrics "$url" "$final_tokens" 0 "$success" "$content_type" "$was_converted" "$converted_tokens"
 
     # Cleanup
     rm -f "$temp_file" /tmp/md_headers.txt /tmp/md_body.txt
@@ -371,6 +449,8 @@ cmd_stats() {
     local md_tokens=$(echo "$metrics" | jq -r '.total_markdown_tokens')
     local html_tokens=$(echo "$metrics" | jq -r '.total_html_tokens')
     local saved_tokens=$(echo "$metrics" | jq -r '.total_tokens_saved')
+    local html_conversions=$(echo "$metrics" | jq -r '.html_conversions')
+    local converted_md_tokens=$(echo "$metrics" | jq -r '.converted_markdown_tokens')
 
     local success_rate=0
     local avg_tokens=0
@@ -409,12 +489,17 @@ cmd_stats() {
     echo -e "  Average Tokens per Request: ${BLUE}$(printf "%'d" $avg_tokens)${NC}"
     echo -e "  Average Savings per Comparison: ${GREEN}$(printf "%'d" $avg_savings)${NC}"
     echo ""
+    echo -e "${CYAN}HTML Conversion Metrics:${NC}"
+    echo -e "  Total HTML Conversions: ${YELLOW}$html_conversions${NC}"
+    echo -e "  Total Tokens (converted): ${GREEN}$(printf "%'d" $converted_md_tokens)${NC}"
+    echo ""
 
     # Recent requests
     echo -e "${CYAN}Recent Requests (last 10):${NC}"
     echo "$metrics" | jq -r '.requests_history[0:10] | to_entries[] |
         "\(.key + 1). \(.value.url) - \(.value.markdown_tokens) tokens" +
         (if .value.tokens_saved > 0 then " (saved \(.value.tokens_saved) tokens)" else "" end) +
+        (if .value.was_converted == true then " [converted]" else "" end) +
         " - \(.value.timestamp)"' | while read -r line; do
         echo -e "  ${BLUE}$line${NC}"
     done
@@ -452,6 +537,8 @@ cmd_reset() {
   "total_markdown_tokens": 0,
   "total_html_tokens": 0,
   "total_tokens_saved": 0,
+  "html_conversions": 0,
+  "converted_markdown_tokens": 0,
   "requests_history": []
 }
 EOF

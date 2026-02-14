@@ -3,11 +3,11 @@ name: markdown_crawl
 description: Fetch web content in markdown format using Cloudflare's Markdown for Agents feature. Use when fetching web pages, documentation sites, or converting HTML to markdown. Tracks metrics like token savings and usage statistics.
 disable-model-invocation: false
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   author: ""
-  tags: ["web", "markdown", "fetch", "cloudflare", "metrics", "crawl"]
+  tags: ["web", "markdown", "fetch", "cloudflare", "metrics", "crawl", "auto-convert"]
   license: ""
-compatibility: "Requires curl and jq"
+compatibility: "Requires curl, jq, and Go (for html_to_markdown binary)"
 ---
 
 # Markdown Crawl
@@ -72,23 +72,21 @@ This will:
 - Display the content with metadata
 - Automatically track metrics
 
-**Fallback Strategy:**
+**Fallback Strategy (Auto-Conversion):**
 
-If the website doesn't support the `Accept: text/markdown` header (indicated by a warning message: "Content not in markdown format"), use the WebFetch MCP tool as a fallback:
+If the website doesn't support the `Accept: text/markdown` header, the script will **automatically** fetch the HTML version and convert it to markdown using the Go binary (`html_to_markdown`):
 
-1. Check the script output for the warning: `⚠ Content not in markdown format`
-2. If present, immediately use the WebFetch tool:
-   ```
-   WebFetch(
-     url: <same_url>,
-     prompt: "Extract and return the full content of this page in markdown format. Include all text, headings, links, and structured content."
-   )
-   ```
-3. Display the WebFetch result to the user as the markdown content
-4. Note in your response that native markdown was not supported and WebFetch was used as fallback
-5. The metrics from the bash script will still be tracked (showing the failed native markdown attempt)
+1. The script detects non-markdown content (Content-Type != text/markdown)
+2. Automatically fetches HTML version of the page
+3. Uses the `html_to_markdown` binary to convert HTML → Markdown
+4. Displays the converted content with "Auto-converted HTML to Markdown" indicator
+5. Tracks conversion in metrics for later analysis
 
-**Important:** This fallback ensures content is always available in markdown format, even for sites that don't natively support the markdown header. WebFetch may use slightly more tokens than native markdown support, but ensures compatibility with all websites.
+This ensures:
+- ✅ Content is always available in markdown format
+- ✅ Works with ALL websites (no manual fallback needed)
+- ✅ Tracks conversion statistics for optimization
+- ✅ No need for external MCP tools like WebFetch
 
 #### Compare Mode
 
@@ -143,6 +141,7 @@ The bash script (`markdown_crawl.sh`) automatically handles:
 ✅ **Error Handling**: Clear error messages, graceful failure handling
 ✅ **Colored Output**: User-friendly colored terminal output
 ✅ **History Management**: Keeps last 50 requests to prevent file bloat
+✅ **Auto HTML-to-Markdown**: Automatically converts HTML to markdown when native support unavailable
 
 ## HTTP Headers
 
@@ -164,8 +163,27 @@ Content-Signal: ai-train=yes, search=yes, ai-input=yes
 The script requires:
 - `curl` - For HTTP requests
 - `jq` - For JSON parsing and manipulation
+- `go` (optional) - For building the html_to_markdown converter
+
+**Optional**: The `html_to_markdown` binary is pre-built and included in `scripts/`. If missing, the script will attempt to build it automatically using the `build.sh` script.
 
 If `jq` is not installed, the script will display an error message.
+
+### Building the HTML to Markdown Converter
+
+The `html_to_markdown` binary is pre-built for Linux AMD64. If you need to rebuild it or build for a different platform:
+
+```bash
+cd skills/markdown_crawl/scripts
+bash build.sh
+```
+
+This will:
+1. Initialize a Go module (if not present)
+2. Download the html-to-markdown library
+3. Build the binary
+
+The converter uses the `github.com/JohannesKaufmann/html-to-markdown/v2` library.
 
 ## Error Handling
 
@@ -225,6 +243,33 @@ Token Metrics:
 - Total Tokens Saved: 25,780
 - Average Tokens per Request: 748
 - Average Savings per Comparison: 1,289
+
+HTML Conversion Metrics:
+- Total HTML Conversions: 12
+- Total Tokens (converted): 8,450
+
+Recent Requests (last 10):
+1. https://example.com - 725 tokens - 2026-02-15
+2. https://example.com - 450 tokens [converted] - 2026-02-15
+...
+```
+
+**Output:**
+```
+📊 Markdown Crawl Statistics
+============================
+
+Total Requests: 42
+Successful: 38
+Failed: 4
+Success Rate: 90.5%
+
+Token Metrics:
+- Total Markdown Tokens Fetched: 28,450
+- Total HTML Tokens (from comparisons): 54,230
+- Total Tokens Saved: 25,780
+- Average Tokens per Request: 748
+- Average Savings per Comparison: 1,289
 ```
 
 ### Example 4: Reset Metrics
@@ -239,16 +284,17 @@ The script will prompt for confirmation before clearing all data.
 
 1. **Use with supported sites**: Check if the site is behind Cloudflare for best results
 2. **Compare mode**: Use `--compare` occasionally to measure actual savings
-3. **Check stats**: Run `/markdown-crawl stats` to see your token efficiency
+3. **Check stats**: Run `/markdown_crawl stats` to see your token efficiency
 4. **Domain tracking**: Stats show which domains you fetch from most often
-5. **Fallback awareness**: Be ready to use WebFetch for sites without native support
+5. **Auto-conversion**: The script automatically handles non-markdown sites - no manual fallback needed
 
 ## Limitations
 
-- Only works on websites that support Markdown for Agents
-- Non-supported sites will return HTML (still tracked in metrics)
+- Native markdown support requires websites to support Cloudflare's Markdown for Agents
+- Non-supported sites are automatically converted (tracked in metrics)
 - Request history is limited to last 50 requests to prevent file bloat
 - Token estimates for HTML may not be exact (uses approximation)
+- Conversion requires the `html_to_markdown` Go binary (included in scripts/)
 
 ## Metrics Storage
 
@@ -262,6 +308,8 @@ Metrics are stored in `skills/markdown_crawl/metrics.json`:
   "total_markdown_tokens": 28450,
   "total_html_tokens": 54230,
   "total_tokens_saved": 25780,
+  "html_conversions": 12,
+  "converted_markdown_tokens": 8450,
   "requests_history": [...]
 }
 ```
@@ -273,11 +321,16 @@ Each request entry includes:
 - Tokens saved
 - Success status
 - Content type received
+- Was converted (boolean) - indicates if HTML was converted to markdown
+- Converted tokens - token count for converted content
 
 ## Troubleshooting
 
+**Problem:** html_to_markdown binary not found or not executable
+- **Solution**: Run `bash build.sh` in the scripts directory to build the binary
+
 **Problem:** Site doesn't return markdown
-- **Solution**: Not all sites support this feature. Check if the site uses Cloudflare. The skill will automatically fall back to WebFetch.
+- **Solution**: Not all sites support this feature. The script will automatically convert HTML to markdown instead.
 
 **Problem:** Token count not showing
 - **Solution**: Server may not provide `X-Markdown-Tokens` header. This is optional.
@@ -287,6 +340,9 @@ Each request entry includes:
 
 **Problem:** `jq` not found
 - **Solution**: Install jq: `sudo apt install jq` (Ubuntu/Debian) or `brew install jq` (macOS)
+
+**Problem:** Go build fails
+- **Solution**: Ensure Go is installed: `go version`. Install via https://go.dev/doc/install
 
 ## References
 

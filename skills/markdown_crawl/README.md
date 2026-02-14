@@ -26,6 +26,7 @@ Learn more: [Cloudflare - Markdown for Agents](https://blog.cloudflare.com/markd
 - ✅ Domain statistics
 - ✅ Standalone bash script (can be used independently)
 - ✅ Claude Code skill integration
+- ✅ WebFetch fallback for unsupported sites
 
 ### Implementation
 
@@ -33,6 +34,17 @@ This skill includes a standalone bash script (`markdown_crawl.sh`) that can be u
 
 1. **As a Claude Code skill**: `/markdown_crawl <url>`
 2. **As a standalone CLI tool**: `./skills/markdown_crawl/markdown_crawl.sh fetch <url>`
+
+### Fallback Strategy
+
+Not all websites support the `Accept: text/markdown` header yet. When the bash script detects that a website doesn't support native markdown (indicated by a warning message), Claude Code agents will automatically fall back to using the `WebFetch` MCP tool to convert the content to markdown format.
+
+**How it works:**
+1. First attempt: Use native markdown support via `Accept: text/markdown` header
+2. If unsupported: Agent uses WebFetch to fetch and convert content to markdown
+3. Both methods are tracked in metrics for comparison
+
+This dual approach ensures maximum compatibility while still benefiting from native markdown support when available.
 
 ### Commands
 

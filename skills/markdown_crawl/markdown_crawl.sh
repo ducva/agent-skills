@@ -268,6 +268,7 @@ cmd_fetch() {
         success "Content received in markdown format"
     else
         warning "Content not in markdown format (got: $content_type)"
+        info "Tip: When called from Claude, use WebFetch as fallback for better markdown conversion"
     fi
 
     if [[ -n "$md_tokens" ]]; then

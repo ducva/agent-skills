@@ -1,7 +1,0 @@
-{
-  "name": "markdown_crawl",
-  "description": "Fetch web content in markdown format using Cloudflare's Markdown for Agents feature. Tracks metrics like token savings and usage statistics.",
-  "version": "1.0.0",
-  "author": "",
-  "tags": ["web", "markdown", "fetch", "cloudflare", "metrics", "crawl"]
-}

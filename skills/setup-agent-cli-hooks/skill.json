@@ -1,7 +1,0 @@
-{
-  "name": "setup-agent-cli-hooks",
-  "description": "Set up hooks and lifecycle configurations for multiple AI coding agent CLIs: Claude Code, Codex, OpenCode, Gemini CLI, and Amp.",
-  "version": "1.0.0",
-  "author": "",
-  "tags": ["hooks", "cli", "setup", "claude-code", "codex", "opencode", "gemini-cli", "amp", "automation", "lifecycle"]
-}

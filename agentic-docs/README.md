@@ -1,21 +1,19 @@
 # agentic-docs
 
-A Claude Code plugin for AI-powered document creation and management. Automatically drafts, reviews, outlines, and updates Markdown and architecture documents for your project.
+A Claude Code plugin for AI-powered document infrastructure. Bootstraps a comprehensive, project-specific documentation system by analyzing your codebase and populating a standard set of architecture and design documents.
 
 ## Features
 
-- **`/agentic-docs:create`** — Research the codebase and draft a complete document (README, ADR, spec, design doc)
-- **`/agentic-docs:outline`** — Generate a document outline for review before full drafting
-- **`/agentic-docs:review`** — Analyze an existing doc for accuracy, completeness, and staleness
-- **`/agentic-docs:update`** — Sync an existing doc with the current codebase, rewriting only stale sections
-- **Proactive suggestions** — After editing source files, a lightweight agent checks if documentation is missing
+- **`/agentic-docs:setup`** — Initializes the full documentation framework, including root-level docs and a detailed `docs/` structure.
+- **Project Research** — Automatically scans manifests, source files, database schemas, and git history to understand your project.
+- **Intelligent Population** — Writes project-specific content (not boilerplate) for architecture, design, security, reliability, and more.
+- **Maintenance** — Merges new insights into existing documents without overwriting accurate manual edits.
 
 ## Agents
 
 | Agent | Model | Role |
 |-------|-------|------|
-| `doc-drafter` | Sonnet | Researches codebase and writes full documents |
-| `doc-suggester` | Haiku | Scans for missing docs and suggests improvements |
+| `doc-setup` | Sonnet | Researches codebase and bootstraps the entire documentation system |
 
 ## Installation
 
@@ -35,56 +33,46 @@ No additional setup required. The plugin uses your existing Claude Code session.
 
 ## Usage
 
-### Create a document
+### Initialize Documentation
 
-```
-/agentic-docs:create readme my-module
-/agentic-docs:create adr use-postgres
-/agentic-docs:create spec auth-flow
-/agentic-docs:create design payment-refactor
+```bash
+/agentic-docs:setup
 ```
 
-### Generate an outline first
+You can also trigger it with natural language:
+- "Setup docs for this project"
+- "Bootstrap the documentation framework"
+- "Initialize documentation layout"
 
-```
-/agentic-docs:outline spec websocket-api
-```
+## Document Structure
 
-### Review an existing document
+The `doc-setup` agent creates and maintains the following structure:
 
-```
-/agentic-docs:review README.md
-/agentic-docs:review docs/architecture.md
-```
-
-### Update a stale document
-
-```
-/agentic-docs:update docs/api-spec.md
-```
-
-### Ask about missing docs
-
-```
-What docs are missing for my project?
-```
-
-## Document Types
-
-| Type | Output Location | Structure |
-|------|----------------|-----------|
-| `readme` | Module directory | Title, install, usage, API, config |
-| `adr` | `docs/adr/` | Status, context, decision, consequences |
-| `spec` | `docs/` | Goals, design, API, edge cases |
-| `design` | `docs/` | Problem, solution, trade-offs, plan |
-| `architecture` | `docs/` | Components, flows, dependencies |
+- **Root Documents**:
+  - `AGENTS.md` — Agent navigation hub and documentation map.
+  - `ARCHITECTURE.md` — High-level system design and tech stack overview.
+- **`docs/` Directory**:
+  - `DESIGN.md` — Design principles and patterns.
+  - `FRONTEND.md` — Frontend architecture and conventions.
+  - `PLANS.md` — Engineering roadmap and execution plans.
+  - `PRODUCT_SENSE.md` — Product vision and user journeys.
+  - `QUALITY_SCORE.md` — Code quality assessment and gaps.
+  - `RELIABILITY.md` — Reliability practices and SLOs.
+  - `SECURITY.md` — Security posture and authentication patterns.
+  - `generated/db-schema.md` — Auto-derived database schema reference.
+  - `exec-plans/` — Active and completed technical execution plans.
+  - `design-docs/` — Index of technical design decisions.
+  - `product-specs/` — Index of product specifications.
 
 ## How It Works
 
-1. **Create/Update**: The `doc-drafter` agent reads your source files, configs, and existing docs to understand the codebase, then writes a well-structured document.
-2. **Outline**: Claude generates headings + brief descriptions for review before committing to a full draft.
-3. **Review**: Claude reads your doc and compares it to the actual codebase, flagging inaccuracies and gaps.
-4. **Proactive suggestions**: A PostToolUse hook fires after every source file edit and checks if the directory has relevant documentation.
+1. **Research Phase**: The agent scans project manifests (`package.json`, etc.), directory layout, source code, configs, database schemas, and git history.
+2. **Structure Creation**: Creates the standardized directory hierarchy using `mkdir -p`.
+3. **Drafting Phase**: Generates project-specific content for each file based on the research findings.
+4. **Validation Phase**: Reports what was created, what was updated, and identifies areas requiring manual attention.
+
+## Planned Features
+
 
 ## Version
 
